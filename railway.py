@@ -17,10 +17,7 @@ TELEGRAM_TOKEN = os.getenv(
     "5884022569:AAFz-s9Qhm56i0GWEMawMvFZiEvJhQFCKWo"
 ).strip()
 
-OPENROUTER_API_KEY = os.getenv(
-    "OPENROUTER_API_KEY",
-    "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"
-).strip()
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
 
 MODEL = os.getenv("MODEL", "openai/gpt-4o-mini").strip()
 ADMIN_ID = int(os.getenv("ADMIN_ID", "5542001718").strip())
