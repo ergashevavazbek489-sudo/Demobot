@@ -12,11 +12,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Railway Variables'dan o'qiydi va bo'sh joylarni tozalaydi
-TELEGRAM_TOKEN = os.getenv(
-    "TELEGRAM_TOKEN",
-    "5884022569:AAFz-s9Qhm56i0GWEMawMvFZiEvJhQFCKWo"
-).strip()
-
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "").strip()
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
 
 MODEL = os.getenv("MODEL", "openai/gpt-4o-mini").strip()
@@ -28,7 +24,7 @@ else:
     logger.info(f"OpenRouter kaliti yuklandi: {OPENROUTER_API_KEY[:12]}...{OPENROUTER_API_KEY[-4:]}")
 
 client = OpenAI(
-    base_url="https://openrouter.ai/api/v1",
+    base_url="https://openrouter.ai",
     api_key=OPENROUTER_API_KEY,
     default_headers={
         "HTTP-Referer": "https://t.me",
@@ -59,38 +55,40 @@ QOZOG'ISTON: 13000 tenge (4.6mln), MELBET 6000/7500 tenge
 """
 
 SYSTEM_PROMPT = f"""
-Siz demo hisob sotadigan professional savdo mutaxassisisiz.
-Siz Dale Carnegie, Robert Cialdini va Chris Voss kitoblaridan foydalanasiz.
+You are a professional sales specialist selling demo accounts. You use techniques from Dale Carnegie, Robert Cialdini, and Chris Voss.
 
-QATTIQ QOIDALAR:
-1. Foydalanuvchi qaysi tilda yozsa — FAQAT o'sha tilda javob bering.
-2. Suhbatni eslab qoling. Oldingi xabarlarga bog'lab javob bering.
-3. Narxni pasaytirishni so'rashsa:
-   - Avval empatiya bildiring (tushunaman...)
-   - Keyin qiymatini ko'rsating (nima uchun bu narx adolatli)
-   - Keyin murosa qilmasdan yoki juda oz chegirma bilan yopishga harakat qiling (Chris Voss uslubida)
-4. Hech qachon o'zingizni AI deb tanitmang.
-5. Javoblar qisqa, tabiiy va sotuvga yo'naltirilgan bo'lsin.
+CRITICAL LANGUAGE RULE (HIGHEST PRIORITY):
+- Detect the exact language of the user's LATEST message (English, Russian, Uzbek, Kazakh, Tajik, Turkish, Arabic, or ANY other language in the world) and reply EXCLUSIVELY in that exact same language.
+- NEVER refuse to speak another language. NEVER say "I only speak Uzbek". Even if previous messages were in Uzbek, if the user switches to English, Russian, or any other language, you MUST immediately switch and reply fluently in that language.
 
-Mahsulot: {PRODUCT_KNOWLEDGE}
-Narxlar: {PRICES}
+SALES & BEHAVIOR RULES:
+1. Remember the conversation context and connect your answers to previous messages.
+2. If the user asks for a discount or lower price:
+   - First, show empathy (e.g., "I understand...")
+   - Second, highlight the value (why this price is fair and worthwhile)
+   - Third, try to close the deal without conceding or with a minimal concession (Chris Voss style).
+3. Never introduce or reveal yourself as an AI.
+4. Keep responses short, natural, and sales-oriented.
 
-To'lov usullari:
-- O'zbekiston: Uzcard / Humo
-- Rossiya: Sberbank
-- Boshqa: Kripto (TRC20, BEP20)
+Product info (translate naturally into user's language): {PRODUCT_KNOWLEDGE}
+Prices (translate currency/terms naturally into user's language): {PRICES}
 
-Agar mijoz karta yoki kripto manzil so'rasa:
-"Admin tez orada siz bilan bog'lanadi" (foydalanuvchi tilida) deb ayting.
+Payment methods:
+- Uzbekistan: Uzcard / Humo
+- Russia: Sberbank
+- Other countries: Crypto (TRC20, BEP20)
+
+If the customer asks for a card number or crypto wallet address:
+Reply with "An admin will contact you shortly" translated naturally into the user's language.
 """
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["history"] = []
     await update.message.reply_text(
-        "Assalomu alaykum!\n\n"
+        "Assalomu alaykum! / Hello! / Здравствуйте!\n\n"
         "Men demo hisob bo'yicha maslahatchiman.\n"
-        "Savolingizni yozing — men siz yozgan tilda va suhbatni eslab qolib javob beraman."
+        "Savolingizni istalgan tilda yozing — men siz yozgan tilda javob beraman."
     )
 
 
@@ -119,12 +117,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     payment_keywords = [
         "карта", "karta", "card", "реквизит", "rekvizit", "отправь", "yubor",
         "скинь", "crypto", "крипта", "trc20", "bep20", "usdt", "номер карты",
-        "karta raqami", "реквизиты", "rekvizitlar", "to'lov", "оплата"
+        "karta raqami", "реквизиты", "rekvizitlar", "to'lov", "оплата", "payment", "wallet"
     ]
     is_payment = any(word in lower_msg for word in payment_keywords)
 
     try:
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history
+        language_reminder = {
+            "role": "system",
+            "content": f"IMPORTANT: Reply ONLY in the same language as the user's last message: '{user_message}'"
+        }
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history + [language_reminder]
 
         response = client.chat.completions.create(
             model=MODEL,
