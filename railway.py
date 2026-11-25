@@ -19,7 +19,7 @@ MODEL = os.getenv("MODEL", "openai/gpt-4o-mini").strip()
 ADMIN_ID = int(os.getenv("ADMIN_ID", "5542001718").strip())
 
 if not TELEGRAM_TOKEN or not OPENROUTER_API_KEY:
-    logger.error("DIQQAT: TELEGRAM_TOKEN yoki OPENROUTER_API_KEY Railway Variables'ga kiritilmagan!")
+    logger.error("DIQQAT: TELEGRAM_TOKEN yoki OPENROUTER_API_KEY kiritilmagan!")
 
 # OpenRouter ulanishi
 client = OpenAI(
@@ -31,29 +31,29 @@ client = OpenAI(
     }
 )
 
-# Asosiy sotuv yo'riqnomasi (barcha tillar uchun universal)
+# Asosiy sotuv va mantiqiy bog'liqlik yo'riqnomasi
 SYSTEM_PROMPT = """
-You are a professional human sales consultant selling demo accounts. You apply persuasion and negotiation techniques from Dale Carnegie, Robert Cialdini, and Chris Voss.
+You are a professional, persuasive human sales consultant selling demo accounts. You use techniques from Dale Carnegie, Robert Cialdini, and Chris Voss.
 
-ABSOLUTE RULE #1 — LANGUAGE MATCHING (NEVER BREAK THIS):
-- Detect the exact language of the user's VERY LAST message.
-- Reply 100% in that exact language.
-- If the user wrote in Uzbek first ("Salom"), and then writes in Russian ("когда?"), you MUST immediately switch to Russian. If the next message is in English, switch to English. Support ALL languages in the world (Uzbek, Russian, English, Kazakh, Tajik, Turkish, Arabic, Spanish, etc.).
+RULE #1 — LANGUAGE & CONTEXT (HIGHEST PRIORITY):
+- You can speak and write fluently in EVERY language in the world (English, Russian, Uzbek, Kazakh, Tajik, Turkish, Arabic, Spanish, German, etc.).
+- Detect the exact language of the user's CURRENT message and reply 100% in that exact language.
+- Keep the full meaning and context of the conversation history, even if earlier messages were in a different language.
+- Example: If the user asked about 1XBET in Uzbek, and then asks "когда?" in Russian, you understand they are asking when they will receive the 1XBET account, and you reply in Russian.
 - NEVER say "I only speak Uzbek" or refuse any language.
 
-SALES & NEGOTIATION RULES:
-1. Remember the conversation history and keep answers connected to the context.
-2. Never admit or say that you are an AI, bot, or program. Act like a real human consultant.
-3. Keep answers concise, natural, polite, and focused on closing the sale.
-4. If the user asks for a discount or complains about the price:
-   - Step 1: Show empathy (e.g., "I understand..." in user's language).
-   - Step 2: Explain the high value of the demo account.
-   - Step 3: Hold firm on the price or offer only a tiny concession (Chris Voss style).
+RULE #2 — HUMAN PERSONA & SALES:
+- Never admit or say that you are an AI, bot, or program.
+- Keep answers concise, natural, polite, and focused on closing the sale.
+- If the user asks for a discount or says it is expensive:
+  1. Show sincere empathy in their language.
+  2. Explain the value (risk-free strategy testing, overcoming psychological pressure, practicing with a large balance).
+  3. Hold firm on the price or offer only a tiny concession (Chris Voss style).
 
-PRODUCT KNOWLEDGE (Translate naturally into the user's language):
-A demo account allows users to test new strategies without risking real money, overcome psychological pressure, and get used to trading/playing with a large balance.
+PRODUCT INFO (Translate naturally into user's language):
+A demo account lets users test new strategies without risking real money, eliminate psychological stress, and get comfortable playing/trading with a large balance.
 
-PRICE LIST (Present clearly in the user's language):
+PRICE LIST (Translate currency/terms naturally into user's language):
 - UZBEKISTAN (UZS / so'm):
   * MEGAPARI: 15 million balance — 60,000 UZS | 60 million balance — 99,000 UZS
   * LUCKPARI: 10M — 50,000 UZS | 20M — 65,000 UZS | 60M — 99,000 UZS
@@ -78,17 +78,17 @@ PAYMENT METHODS:
 - International / Other: Crypto (USDT TRC20, BEP20)
 
 WHEN USER ASKS FOR PAYMENT DETAILS (card number, wallet address, how to pay):
-Tell them: "An admin will contact you shortly with the payment details" (translated naturally into the user's language).
+Reply naturally in the user's language: "An admin will contact you shortly with the payment details."
 """
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["history"] = []
+    context.user_data.clear()
     await update.message.reply_text(
         "Assalomu alaykum! / Здравствуйте! / Hello!\n\n"
-        "Demo hisob bo'yicha maslahatchiman. Istalgan tilda yozishingiz mumkin — men siz yozgan tilda javob beraman!\n"
-        "Пишите на любом языке — я отвечу на вашем языке!\n"
-        "Write in any language — I will reply in your language!"
+        "Demo hisob bo'yicha maslahatchiman. Istalgan tilda yozing — suhbat ma'nosini tushungan holda, siz yozgan tilda javob beraman!\n"
+        "Пишите на любом языке — я пойму контекст и отвечу на вашем языке!\n"
+        "Write in any language — I will understand the context and reply in your language!"
     )
 
 
@@ -102,16 +102,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.chat.send_action("typing")
 
-    # Suhbat tarixini saqlash
     if "history" not in context.user_data:
         context.user_data["history"] = []
 
     history = context.user_data["history"]
-    history.append({"role": "user", "content": user_message})
-
-    if len(history) > 8:
-        history = history[-8:]
-        context.user_data["history"] = history
 
     # To'lov so'rovini tekshirish
     lower_msg = user_message.lower()
@@ -124,17 +118,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_payment = any(word in lower_msg for word in payment_keywords)
 
     try:
-        # AI'ga aynan oxirgi xabar tilida javob berishni majburlovchi eslatma
-        strict_lang_instruction = {
-            "role": "system",
-            "content": (
-                f"CRITICAL: Ignore the language of previous messages if it differs. "
-                f"Detect the language of the user's LAST message: \"{user_message}\" "
-                f"and respond STRICTLY and ONLY in that exact language."
-            )
-        }
+        # Oxirgi xabarni aniq til ko'rsatmasi bilan birga yuboramiz
+        framed_user_message = (
+            f"User's current message: {user_message}\n\n"
+            f"[System Note: Understand the context from previous messages, but respond ONLY in the exact language of the user's current message above.]"
+        )
 
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history + [strict_lang_instruction]
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history + [
+            {"role": "user", "content": framed_user_message}
+        ]
 
         response = client.chat.completions.create(
             model=MODEL,
@@ -143,10 +135,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             max_tokens=700
         )
 
-        bot_reply = response.choices[0].message.content.strip()
+        first_choice = next(iter(response.choices))
+        bot_reply = first_choice.message.content.strip()
+
         await update.message.reply_text(bot_reply)
 
+        # Toza xabarlarni tarixga saqlaymiz
+        history.append({"role": "user", "content": user_message})
         history.append({"role": "assistant", "content": bot_reply})
+
+        if len(history) > 12:
+            history = history[-12:]
         context.user_data["history"] = history
 
         # Adminga xabar yuborish
@@ -183,7 +182,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    logger.info("Bot 24/7 ko'p tilli rejimda ishga tushdi...")
+    logger.info("Bot 24/7 aqlli ko'p tilli rejimda ishga tushdi...")
 
     while True:
         try:
